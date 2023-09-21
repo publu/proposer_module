@@ -153,6 +153,8 @@ contract ProposerExecutionModule {
             require(!safeSettings[safe].proposerWhitelist[msg.sender], "Proposer still allowlisted");
 
             // Clear the execution request.
+// MOOSE
+// double check that deleting here actually removes the other variabels. otherwise opens up attack vector for seemingly deleted executions
             delete executionRequests[safe][executionRequestIds[i]];
 
             emit ExecutionCleared(safe, executionRequestIds[i]);
