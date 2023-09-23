@@ -29,6 +29,7 @@ interface ExecutionModule {
 contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     // Global Exit Root address
     IPolygonZkEVMBridge public immutable polygonZkEVMBridge;
+    ExecutionModule public immutable executionModule;
 
     // Current network identifier
     uint32 public immutable networkID;
@@ -36,9 +37,10 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     /**
      * @param _polygonZkEVMBridge Polygon zkevm bridge address
      */
-    constructor(IPolygonZkEVMBridge _polygonZkEVMBridge) {
+    constructor(IPolygonZkEVMBridge _polygonZkEVMBridge, ExecutionModule _executionModule) {
         polygonZkEVMBridge = _polygonZkEVMBridge;
         networkID = polygonZkEVMBridge.networkID();
+        executionModule = _executionModule;
     }
 
     /**
@@ -67,7 +69,7 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
         (address safe, address to, bytes memory data, uint256 value) = abi.decode(data, (address, address, bytes, uint256));
 
         // Call the createExecution function from the ExecutionModule
-        ExecutionModule(executionModule).createExecution(safe, to, value, data, 0);
+        executionModule.createExecution(safe, to, value, data, 0);
 
         emit ProposerReceived(originAddress, originNetwork, data);
     }
