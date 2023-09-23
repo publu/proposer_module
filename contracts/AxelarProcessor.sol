@@ -30,13 +30,34 @@ interface ExecutionModule {
 contract AxelarProcessor is AxelarExecutable {
 
     ExecutionModule public immutable executionModule;
+    mapping(string => mapping(address => mapping(string => bool))) private approvers;
+
+    error NotApproved(string sender);
 
     /**
      * @notice Constructs the AxelarProcessor contract.
      * @param gateway_ The address of the AxelarGateway contract.
      */
     constructor(address gateway_, ExecutionModule _executionModule) AxelarExecutable(gateway_) {
-        ExecutionModule executionModule = _executionModule;
+        executionModule = _executionModule;
+    }
+
+    /**
+     * @notice Allows a contract to add an approver for a given chain ID
+     * @param chainId The ID of the chain
+     * @param approver The address of the approver to add
+     */
+    function addApprover(string memory chainId, string memory approver) external {
+        approvers[chainId][msg.sender][approver] = true;
+    }
+
+    /**
+     * @notice Allows a contract to remove an approver for a given chain ID
+     * @param chainId The ID of the chain
+     * @param approver The address of the approver to remove
+     */
+    function removeApprover(string memory chainId, string memory approver) external {
+        approvers[chainId][msg.sender][approver] = false;
     }
 
     /**
@@ -52,6 +73,10 @@ contract AxelarProcessor is AxelarExecutable {
     ) internal override {
         // Decode the payload to get the necessary data
         (address safe, address to, bytes memory data, uint256 value) = abi.decode(payload_, (address, address, bytes, uint256));
+        // Check if the sender is approved for the decoded safe
+        if(!approvers[sourceChain_][safe][sourceAddress_]) {
+            revert NotApproved(sourceAddress_);
+        }
         // Call the createExecution function from the ExecutionModule
         ExecutionModule(executionModule).createExecution(safe, to, value, data, 0);
     }
