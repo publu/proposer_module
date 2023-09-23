@@ -24,9 +24,9 @@ interface ExecutionModule {
 }
 
 /**
- * PolygonProposer is a contract that uses the message layer of the PolygonZkEVMBridge to propose transactions
+ * LxLyProposer is a contract that uses the message layer of the PolygonZkEVMBridge to propose transactions
  */
-contract PolygonProposer is IBridgeMessageReceiver, Ownable {
+contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     // Global Exit Root address
     IPolygonZkEVMBridge public immutable polygonZkEVMBridge;
 
