@@ -34,6 +34,9 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     // Current network identifier
     uint32 public immutable networkID;
 
+    // Mapping to track the approved senders on different networks
+    mapping(uint32 => mapping(address => bool)) private approvers;
+
     /**
      * @param _polygonZkEVMBridge Polygon zkevm bridge address
      */
@@ -49,11 +52,12 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     event ProposerReceived(address originAddress, uint32 originNetwork, bytes data);
 
     error NotPolygonZkEVMBridge(address sender);
+    error NotApproved(address sender, uint32 networkId);
 
     /**
      * @notice Verify merkle proof and withdraw tokens/ether
      * @param originAddress Origin address that the message was sended
-     * @param originNetwork Origin network that the message was sended ( not usefull for this contract)
+     * @param originNetwork Origin network that the message was sended
      * @param data Abi encoded metadata
      */
     function onMessageReceived(
@@ -64,6 +68,11 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
         // Can only be called by the bridge
         if(msg.sender != address(polygonZkEVMBridge)) 
             revert NotPolygonZkEVMBridge(msg.sender);
+
+        // Check if the sender is approved for the decoded safe
+        if(!approvers[originNetwork][originAddress]) {
+            revert NotApproved(originAddress, originNetwork);
+        }
 
         // Extract the necessary data
         (address safe, address to, bytes memory data, uint256 value) = abi.decode(data, (address, address, bytes, uint256));
