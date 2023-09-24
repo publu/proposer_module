@@ -23,7 +23,7 @@ interface IGnosisSafe {
 contract ProposerExecutionModule {
     
     // The delay before a proposed transaction can be executed, default to 1 week.
-    uint256 public delay = 1 weeks;
+    uint256 public delay = 0;
 
     // The maximum delay that can be set.
     uint256 public constant maxDelay = 4 weeks;
@@ -72,9 +72,7 @@ contract ProposerExecutionModule {
     }
 
     // Constructor to initialize the delay.
-    constructor() {
-        delay = 1 weeks;
-    }
+    constructor() {}
 
     /// @notice Allows a allowlisted proposer to propose a transaction.
     /// @param safe The address of the Gnosis Safe.

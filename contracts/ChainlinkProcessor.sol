@@ -47,7 +47,6 @@ contract ChainlinkProcessor {
     mapping(uint256 => mapping(address => mapping(address => bool))) private approvers;
 
     error OnlyChainlink(address sender);
-    error NotApproved(address sender, uint256 chainId);
 
     /**
      * @notice Ensures only Chainlink can call the method
@@ -110,7 +109,7 @@ contract ChainlinkProcessor {
         }
 
         // Check if the sender is approved for the decoded safe
-        if(!approvers[safe][sender]) {
+        if(!approvers[any2EvmMessage.sourceChainSelector][safe][sender]) {
             revert NotApproved(sender);
         }
 
