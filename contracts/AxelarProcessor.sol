@@ -75,7 +75,7 @@ contract AxelarProcessor is AxelarExecutable {
         (address safe, address to, bytes memory data, uint256 value) = abi.decode(payload_, (address, address, bytes, uint256));
         // Check if the sender is approved for the decoded safe
         /*
-        happy path happy path happy path
+        happy path happy path happy path (do not include in readme as this part is not actually committed)
         if(!approvers[sourceChain_][safe][sourceAddress_]) {
             revert NotApproved(sourceAddress_);
         }*/
