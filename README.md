@@ -39,7 +39,49 @@ An execution request can be cleared from the system if not needed anymore. This 
 
 The execution requests are stored in a mapping structure `executionRequests`, keyed by the Safe address and the unique `executionRequestId`. The stored `Execution` struct contains all the necessary details about the transaction, including the recipient, value, data, and operation type. Each request also maintains its timestamp and an executed flag to ensure each transaction is only executed once.
 
-## Running tests
+the contracts are:
 
-tbd
+zkEVM Proposer Module:
+https://zkevm.polygonscan.com/address/0x1EaF18086C07D4d6a59B94277F80204274Ccc54d
+
+this is the createExecution test from an EOA:
+https://polygonscan.com/tx/0xae9e6b334cfe1d6ac4bb6d648f604527bd728a9e431ab61cd937879fc8dcd44e#eventlog
+
+This is it being executed (verifying that safe module works):
+https://polygonscan.com/tx/0xd3eaa7e48a31ef7aba2d67c557d2ecceb5ce94040a8189c7b3d3fb8bd84ec0f
+
+
+Axelar execution:
+
+https://axelarscan.io/gmp/0xdfd625647f4985429e69cb860cb15068396dcc7cf7d3058c1fe3931187c74da3
+
+Proposer Execution Module:
+https://polygonscan.com/address/0x02668453F6138bE9BBA9946de8472228c4400109#writeContract
+
+Axelar Execution Proposer:
+https://polygonscan.com/address/0xD2BeD6f2b32832ddA397C9FcA6d1E503d627C49d#writeContract
+
+
+Axelar gateway contracts:
+https://docs.axelar.dev/dev/reference/mainnet-contract-addresses
+{
+    "chainId": 137,
+    "from": "0x985a29e88e75394dbdae41a269409f701ccf6a43",
+    "to": "0xce16d3a66b8c9cbd0443bb576c735e6323e450e8",
+    "value": "0x0",
+    "data": "0xa0712d68000000000000000000000000000000000000000000000003c73d60ab450b26c9",
+    "gas": "0xc85a",
+    "maxFeePerGas": "0x15e2d62c00",
+    "maxPriorityFeePerGas": "0x15e2d62c00",
+    "nonce": "0x69d"
+}
+
+Short description:
+Crosschain governance project utilizing Axelar and LxLy bridge for seamless interoperability and transaction execution.
+
+Description:
+This project is a crosschain governance system that leverages the power of Axelar and LxLy bridge. It includes several smart contracts that interact with each other to facilitate crosschain transactions. The system allows for the execution of transactions not only from an Externally Owned Account (EOA), but also from any multisig. This means an Ethereum multisig can message any other chain to execute a change, as demonstrated in the provided polygonscan links. The project also integrates with the Axelar gateway contracts and the Proposer Execution Module for enhanced functionality.
+
+
+
 
