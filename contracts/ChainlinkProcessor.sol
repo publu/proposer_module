@@ -2,7 +2,46 @@
 
 pragma solidity ^0.8.0;
 
-import { Client } from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
+import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
+import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
+
+interface IRouterClient {
+  error UnsupportedDestinationChain(uint64 destChainSelector);
+  error InsufficientFeeTokenAmount();
+  error InvalidMsgValue();
+
+  /// @notice Checks if the given chain ID is supported for sending/receiving.
+  /// @param chainSelector The chain to check.
+  /// @return supported is true if it is supported, false if not.
+  function isChainSupported(uint64 chainSelector) external view returns (bool supported);
+
+  /// @notice Gets a list of all supported tokens which can be sent or received
+  /// to/from a given chain id.
+  /// @param chainSelector The chainSelector.
+  /// @return tokens The addresses of all tokens that are supported.
+  function getSupportedTokens(uint64 chainSelector) external view returns (address[] memory tokens);
+
+  /// @param destinationChainSelector The destination chainSelector
+  /// @param message The cross-chain CCIP message including data and/or tokens
+  /// @return fee returns guaranteed execution fee for the specified message
+  /// delivery to destination chain
+  /// @dev returns 0 fee on invalid message.
+  function getFee(
+    uint64 destinationChainSelector,
+    Client.EVM2AnyMessage memory message
+  ) external view returns (uint256 fee);
+
+  /// @notice Request a message to be sent to the destination chain
+  /// @param destinationChainSelector The destination chain ID
+  /// @param message The cross-chain CCIP message including data and/or tokens
+  /// @return messageId The message ID
+  /// @dev Note if msg.value is larger than the required fee (from getFee) we accept
+  /// the overpayment with no refund.
+  function ccipSend(
+    uint64 destinationChainSelector,
+    Client.EVM2AnyMessage calldata message
+  ) external payable returns (bytes32);
+}
 
 /**
  * @title Interface for the ExecutionModule contract.
@@ -31,7 +70,7 @@ interface ExecutionModule {
  * @notice This contract processes the messages received from Chainlink and forwards them for execution.
  * @dev This contract assumes integration with a Gnosis Safe-like system.
  */
-contract ChainlinkProcessor {
+contract ChainlinkProcessor is CCIPReceiver {
     
     /// @notice Error to indicate function can only be called by an approved address.
     error NotApproved(address sender);
@@ -42,78 +81,125 @@ contract ChainlinkProcessor {
     /// @notice Address of the ExecutionModule contract.
     address public executionModule;
     address public chainlink;
+    uint48 public chainId;
+
+    event MessageProcessed(Client.Any2EVMMessage message);
+    event DataDecoded(address safe, address to, bytes data, uint256 value);
 
     /// @notice Mapping to track the approved senders on different chains
     mapping(uint256 => mapping(address => mapping(address => bool))) private approvers;
-
-    error OnlyChainlink(address sender);
-
-    /**
-     * @notice Ensures only Chainlink can call the method
-     */
-    modifier onlyChainlink() {
-        if(msg.sender != chainlink) 
-            revert OnlyChainlink(msg.sender);
-        _;
-    }
-
+    mapping(bytes32 => bool) public processedMessages;
+    
     /**
      * @notice Constructor to set the ExecutionModule and Chainlink addresses
      * @param _executionModule Address of the ExecutionModule
      * @param _chainlink Address of the Chainlink
      */
-    constructor(address _executionModule, address _chainlink) {
+    constructor(address _executionModule, address _chainlink, uint48 _chainId) CCIPReceiver(_chainlink) {
         executionModule = _executionModule;
         chainlink = _chainlink;
+        chainId = _chainId;
     }
 
     /**
+     * @dev Event emitted when an approver is added.
+     */
+    event ApproverAdded(uint48 indexed _chainId, address indexed safe, address indexed approver);
+
+    /**
+     * @dev Event emitted when an approver is removed.
+     */
+    event ApproverRemoved(uint48 indexed _chainId, address indexed safe, address indexed approver);
+
+    /**
      * @notice Allows a contract to add an approver for a given chain ID
-     * @param chainId The ID of the chain
+     * @param _chainId The ID of the chain
      * @param approver The address of the approver to add
      */
-    function addApprover(uint256 chainId, address approver) external {
-        approvers[chainId][msg.sender][approver] = true;
+    function addApprover(uint48 _chainId, address approver) external {
+        approvers[_chainId][msg.sender][approver] = true;
+        emit ApproverAdded(_chainId, msg.sender, approver);
     }
 
     /**
      * @notice Allows a contract to remove an approver for a given chain ID
-     * @param chainId The ID of the chain
+     * @param _chainId The ID of the chain
      * @param approver The address of the approver to remove
      */
-    function removeApprover(uint256 chainId, address approver) external {
-        approvers[chainId][msg.sender][approver] = false;
+    function removeApprover(uint48 _chainId, address approver) external {
+        approvers[_chainId][msg.sender][approver] = false;
+        emit ApproverRemoved(_chainId, msg.sender, approver);
     }
 
     /**
      * @notice Processes the received messages from Chainlink and forwards them for execution
-     * @param any2EvmMessage The message received from Chainlink
+     * @param message The message received from Chainlink
      */
-    function ccipReceive(
-        Client.Any2EVMMessage memory any2EvmMessage
-    )
-        external
-        onlyChainlink
-    {
-        // nonce the message, or just the hash of the evm thing
-        
+    function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
+        processMessage(message);
+    }
+
+    /**
+     * @notice Clones the _ccipReceive function but isn't an override
+     * @param message The message received from Chainlink
+     */
+    function processMessage( Client.Any2EVMMessage memory message) internal {
+        // Store the messageId in a mapping to prevent repeated messageIds
+        require(!processedMessages[message.messageId], "MessageId has already been processed");
+        processedMessages[message.messageId] = true;
+
         // Extract the necessary data
-        (address safe, address to, bytes memory data, uint256 value) = abi.decode(any2EvmMessage.data, (address, address, bytes, uint256));
+        (address safe, address to, bytes memory data, uint256 value) = abi.decode(message.data, (address, address, bytes, uint256));
+        emit MessageProcessed(message);
+        emit DataDecoded(safe, to, data, value);
 
+        address sender;
+        bytes memory senderBytes = message.sender;
 
-        address sender = abi.decode(any2EvmMessage.sender, (address));
-
-        //check if sourceChain is not same as current chain
-        if(any2EvmMessage.sourceChainSelector == block.chainid) {
-            revert SameSourceChain();
+        assembly {
+            sender := mload(add(senderBytes, 32))
         }
 
+        //check if sourceChain is not same as current chain
+        if(message.sourceChainSelector == chainId) {
+            revert SameSourceChain();
+        }
+        
         // Check if the sender is approved for the decoded safe
-        if(!approvers[any2EvmMessage.sourceChainSelector][safe][sender]) {
+        if(!approvers[message.sourceChainSelector][safe][sender]) {
             revert NotApproved(sender);
         }
 
         // Call the createExecution function from the ExecutionModule
         ExecutionModule(executionModule).createExecution(safe, to, value, data, 0);
     }
+
+    /*
+    function sendMessage(uint64 destinationChainSelector, address receiver, bytes memory payload, uint256 _gasLimit) public payable returns (bytes32 messageId) {
+        // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
+        Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
+            receiver: abi.encode(receiver), // ABI-encoded receiver address
+            data: payload, // bytes payload
+            tokenAmounts: new Client.EVMTokenAmount[](0), // Empty array indicating no tokens are being sent
+            extraArgs: Client._argsToBytes(
+                Client.EVMExtraArgsV1({gasLimit: _gasLimit, strict: false}) // Additional arguments, setting gas limit and non-strict sequency mode
+            ),
+            feeToken: address(0) // Setting feeToken to zero address, indicating native asset will be used for fees
+        });
+
+        // Initialize a router client instance to interact with cross-chain router
+        IRouterClient router = IRouterClient(chainlink);
+
+        // Get the fee required to send the message
+        uint256 fees = router.getFee(destinationChainSelector, evm2AnyMessage);
+
+        // Send the message through the router and store the returned message ID
+        messageId = router.ccipSend{value: fees}(
+            destinationChainSelector,
+            evm2AnyMessage
+        );
+
+        // Return the message ID
+        return messageId;
+    }*/
 }
