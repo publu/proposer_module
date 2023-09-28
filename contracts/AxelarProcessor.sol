@@ -29,7 +29,7 @@ interface ExecutionModule {
  */
 contract AxelarProcessor is AxelarExecutable {
 
-    ExecutionModule public immutable executionModule;
+    ExecutionModule public executionModule;
     mapping(string => mapping(address => mapping(string => bool))) private approvers;
 
     error NotApproved(string sender);
