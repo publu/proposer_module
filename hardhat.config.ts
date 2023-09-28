@@ -1,18 +1,20 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@nomiclabs/hardhat-etherscan";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
 const mnemonic = process.env.MNEMONIC;
 const token = process.env.INFURA_TOKEN;
+const etherscanApiKey = process.env.ETHERSCANTOKEN;
 
 const config: HardhatUserConfig = {
   defaultNetwork: "hardhat",
   networks: {
     hardhat: {
       forking: {
-        url: `https://eth.llamarpc.com`,
+        url: `https://base-goerli.publicnode.com`,
       },
     },
     localhost: {
@@ -72,6 +74,18 @@ const config: HardhatUserConfig = {
       accounts: [process.env.MATIC_KEY],
       gasPrice: 15000000000,
     },
+    baseg: {
+      url: "https://base-goerli.publicnode.com",
+      accounts: [process.env.MATIC_KEY],
+      gasPrice: 300000000,
+    },
+    sepolia: {
+      url: "https://eth-sepolia-public.unifra.io",
+      accounts: [process.env.MATIC_KEY],
+    },
+  },
+  etherscan: {
+    apiKey: etherscanApiKey,
   },
   solidity: {
     version: "0.8.17",
