@@ -22,11 +22,14 @@ interface IGnosisSafe {
 /// addresses from the whitelist.
 contract ProposerExecutionModule {
     
-    // The delay before a proposed transaction can be executed, default to 1 week.
-    uint256 public delay = 1 weeks;
+    // The delay before a proposed transaction can be executed, default to no delay
+    uint256 public delay = 0;
 
     // The maximum delay that can be set.
     uint256 public constant maxDelay = 4 weeks;
+
+    // Mapping to store the nonce for each Safe address
+    mapping(address => uint256) public safeNonce;
 
     // Execution struct represents a proposed transaction.
     struct Execution {
@@ -35,7 +38,7 @@ contract ProposerExecutionModule {
         uint256 value;           // The amount of ether to send.
         bytes data;              // Data payload of the transaction.
         Enum.Operation operation; // Operation type of the transaction.
-        bool executed;           // Whether the transaction has been executed or not.
+        uint8 executed;           // Whether the transaction has been executed or not.
     }
 
     // SafeSettings struct to keep track of proposers and delay for each Safe 
@@ -71,10 +74,7 @@ contract ProposerExecutionModule {
         _;
     }
 
-    // Constructor to initialize the delay.
-    constructor() {
-        delay = 1 weeks;
-    }
+    constructor() {}
 
     /// @notice Allows a allowlisted proposer to propose a transaction.
     /// @param safe The address of the Gnosis Safe.
@@ -92,7 +92,10 @@ contract ProposerExecutionModule {
         require(to != address(0), "Invalid target address");
 
         // Create a unique identifier for the proposed transaction.
-        bytes32 executionRequestId = keccak256(abi.encodePacked(safe, to, value, data, operation));
+        // Adding a nonce to the executionRequestId to ensure uniqueness for repeated transactions.
+        // Nonce is a global variable that is incremented for each safe to ensure uniqueness.
+        uint256 nonce = safeNonce[safe]++;
+        bytes32 executionRequestId = keccak256(abi.encodePacked(safe, to, value, data, operation, nonce));
         require(executionRequests[safe][executionRequestId].timestamp == 0, "Execution request already exists");
 
         // Create the proposed transaction and store it.
@@ -102,40 +105,53 @@ contract ProposerExecutionModule {
             value: value,
             data: data,
             operation: operation,
-            executed: false
+            executed: 0
         });
 
         emit ExecutionCreated(safe, executionRequestId);
     }
 
-    /// @notice Allows a allowlisted proposer to execute multiple transactions after their respective delays.
+    /// @notice Internal function for executing transactions from module.
     /// @param safe The address of the Gnosis Safe.
-    /// @param executionRequestIds An array of unique identifiers of the proposed transactions.
-    function executeExecutions(address safe, bytes32[] calldata executionRequestIds) external onlyValidProposer(safe) {
-        for (uint256 i = 0; i < executionRequestIds.length; i++) {
-            Execution storage request = executionRequests[safe][executionRequestIds[i]];
+    /// @param executionRequestId The unique identifier of the proposed transaction.
+    /// @param fast A boolean indicating if the transaction should bypass the delay.
+    function _executeFromModule(address safe, bytes32 executionRequestId, bool fast) internal {
+        Execution storage request = executionRequests[safe][executionRequestId];
 
-            // Check that the request exists.
-            require(request.timestamp > 0, "Execution request not found");
-            // Check if the delay for this transaction has passed.
-            require(block.timestamp >= request.timestamp + delay, "Delay period not passed for request");
-            // Check that the request has not been executed.
-            require(!request.executed, "Execution request already executed");
+        // Check that the request exists.
+        require(request.timestamp > 0, "Execution request not found");
+        // Check if the delay for this transaction has passed or if the transaction should bypass the delay.
+        require((block.timestamp >= request.timestamp + delay) || fast, "Delay period not passed for request");
+        // Check that the request has not been executed.
+        require(request.executed == 0, "Execution request already executed");
 
-            // Mark the transaction as executed.
-            request.executed = true;
+        // Mark the transaction as executed.
+        request.executed = 1;
 
-            // Execute the transaction using Gnosis Safe's execTransactionFromModule function.
-            require(
-                IGnosisSafe(safe).execTransactionFromModule(
-                    request.to, 
-                    request.value, 
-                    request.data, 
-                    request.operation
-                ), 
-                "Could not execute transaction"
-            );
-        }
+        // Execute the transaction using Gnosis Safe's execTransactionFromModule function.
+        require(
+            IGnosisSafe(safe).execTransactionFromModule(
+                request.to, 
+                request.value, 
+                request.data, 
+                request.operation
+            ), 
+            "Could not execute transaction"
+        );
+    }
+
+    /// @notice Allows anyone to execute a transaction after its delay.
+    /// @param safe The address of the Gnosis Safe.
+    /// @param executionRequestId The unique identifier of the proposed transaction.
+    function executeExecution(address safe, bytes32 executionRequestId) external {
+        _executeFromModule(safe, executionRequestId, false);
+    }
+
+    /// @notice Allows an approved proposer to execute a transaction immediately, bypassing the delay.
+    /// @param safe The address of the Gnosis Safe.
+    /// @param executionRequestId The unique identifier of the proposed transaction.
+    function executeExecutionFast(address safe, bytes32 executionRequestId) external onlyValidProposer(safe) {
+        _executeFromModule(safe, executionRequestId, true);
     }
 
     /// @notice Allows anyone to clear multiple executions if their proposers were removed from the whitelist.
@@ -148,14 +164,12 @@ contract ProposerExecutionModule {
             // Check that the request exists.
             require(request.timestamp > 0, "Execution request not found");
             // Check that the request has not been executed.
-            require(!request.executed, "Execution request already executed");
+            require(request.executed==0, "Execution request already executed");
             // Check if the proposer is no longer allowlisted.
             require(!safeSettings[safe].proposerWhitelist[msg.sender], "Proposer still allowlisted");
 
             // Clear the execution request.
-// MOOSE
-// double check that deleting here actually removes the other variabels. otherwise opens up attack vector for seemingly deleted executions
-            delete executionRequests[safe][executionRequestIds[i]];
+            executionRequests[safe][executionRequestIds[i]].executed=2;
 
             emit ExecutionCleared(safe, executionRequestIds[i]);
         }
