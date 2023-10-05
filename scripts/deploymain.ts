@@ -9,6 +9,14 @@ async function main() {
     await proposerExecutionModule.deployed();
 
     console.log("ProposerExecutionModule deployed to:", proposerExecutionModule.address);
+
+    const ChainlinkProcessor = await hre.ethers.getContractFactory("ChainlinkProcessor");
+    const chainlinkAddress = "0xa8c0c11bf64af62cdca6f93d3769b88bdd7cb93d"; // replace with the address of the Chainlink
+
+    const chainlinkProcessor = await ChainlinkProcessor.deploy(proposerExecutionModule.address, chainlinkAddress, "5790810961207155433");
+
+    await chainlinkProcessor.deployed();
+    console.log("ChainlinkProcessor deployed to: ", chainlinkProcessor.address)
 }
 
 main()
