@@ -64,23 +64,12 @@ https://polygonscan.com/address/0xD2BeD6f2b32832ddA397C9FcA6d1E503d627C49d#write
 
 Axelar gateway contracts:
 https://docs.axelar.dev/dev/reference/mainnet-contract-addresses
-{
-    "chainId": 137,
-    "from": "0x985a29e88e75394dbdae41a269409f701ccf6a43",
-    "to": "0xce16d3a66b8c9cbd0443bb576c735e6323e450e8",
-    "value": "0x0",
-    "data": "0xa0712d68000000000000000000000000000000000000000000000003c73d60ab450b26c9",
-    "gas": "0xc85a",
-    "maxFeePerGas": "0x15e2d62c00",
-    "maxPriorityFeePerGas": "0x15e2d62c00",
-    "nonce": "0x69d"
-}
 
 Short description:
 Crosschain governance project utilizing Axelar and LxLy bridge for seamless interoperability and transaction execution.
 
 Description:
-This project is a crosschain governance system that leverages the power of Axelar and LxLy bridge. It includes several smart contracts that interact with each other to facilitate crosschain transactions. The system allows for the execution of transactions not only from an Externally Owned Account (EOA), but also from any multisig. This means an Ethereum multisig can message any other chain to execute a change, as demonstrated in the provided polygonscan links. The project also integrates with the Axelar gateway contracts and the Proposer Execution Module for enhanced functionality.
+This project is a crosschain governance system that leverages the power of Axelar, LxLy bridge, and Chainlink's cross chain interoperability protocol. It includes several smart contracts that interact with each other to facilitate crosschain transactions. The system allows for the execution of transactions not only from an Externally Owned Account (EOA), but also from any multisig. This means an Ethereum multisig can message any other chain to execute a change, as demonstrated in the provided polygonscan links. The project also integrates with the Axelar gateway contracts, the Proposer Execution Module, and Chainlink for enhanced functionality and interoperability.
 
 
 
