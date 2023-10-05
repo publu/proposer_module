@@ -1,27 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity 0.8.17;
+pragma solidity >=0.8.0;
 
 import "./interfaces/IBridgeMessageReceiver.sol";
 import "./interfaces/IPolygonZkEVMBridge.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-
-interface ExecutionModule {
-    /**
-     * @notice Allows an external contract to request the execution of a transaction.
-     * @param safe The address of the Gnosis Safe.
-     * @param to The address of the recipient.
-     * @param value The amount of ether to send.
-     * @param data The data payload of the transaction.
-     * @param operation The operation type of the transaction.
-     */
-    function createExecution(
-        address safe,
-        address to,
-        uint256 value,
-        bytes calldata data,
-        uint8 operation
-    ) external;
-}
+import "./interfaces/IExecutionModule.sol";
 
 /**
  * LxLyProposer is a contract that uses the message layer of the PolygonZkEVMBridge to propose transactions
@@ -36,6 +19,11 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
 
     // Mapping to track the approved senders on different networks
     mapping(uint32 => mapping(address => bool)) private approvers;
+    
+    /**
+     * @dev Mapping to track the processed messages
+     */
+    mapping(bytes32 => bool) private processedMessages;
 
     /**
      * @param _polygonZkEVMBridge Polygon zkevm bridge address
@@ -49,10 +37,11 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     /**
      * @dev Emitted when a message is received from another network
      */
-    event ProposerReceived(address originAddress, uint32 originNetwork, bytes data);
+    event TransactionReceived(address originAddress, uint32 originNetwork, bytes data);
 
     error NotPolygonZkEVMBridge(address sender);
     error NotApproved(address sender, uint32 networkId);
+    error MessageAlreadyProcessed(bytes32 messageId);
 
     /**
      * @notice Verify merkle proof and withdraw tokens/ether
@@ -75,11 +64,22 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
         }
 
         // Extract the necessary data
-        (address safe, address to, bytes memory data, uint256 value) = abi.decode(data, (address, address, bytes, uint256));
+        (address safe, address to, bytes memory data, uint256 value, uint256 nonce) = abi.decode(data, (address, address, bytes, uint256, uint256));
+
+        // Generate a unique message ID using the nonce and originAddress
+        bytes32 messageId = keccak256(data);
+
+        // Check if the message has already been processed
+        if (processedMessages[messageId]) {
+            revert MessageAlreadyProcessed(messageId);
+        }
+
+        // Mark the message as processed
+        processedMessages[messageId] = true;
 
         // Call the createExecution function from the ExecutionModule
         executionModule.createExecution(safe, to, value, data, 0);
 
-        emit ProposerReceived(originAddress, originNetwork, data);
+        emit TransactionReceived(originAddress, originNetwork, data);
     }
 }
