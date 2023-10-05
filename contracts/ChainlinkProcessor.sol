@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import "./interfaces/IExecutionModule.sol";
 
 interface IRouterClient {
   error UnsupportedDestinationChain(uint64 destChainSelector);
@@ -44,28 +45,6 @@ interface IRouterClient {
 }
 
 /**
- * @title Interface for the ExecutionModule contract.
- * @notice This interface allows other contracts to call the createExecution function from the ExecutionModule contract.
- */
-interface ExecutionModule {
-    /**
-     * @notice Allows an external contract to request the execution of a transaction.
-     * @param safe The address of the Gnosis Safe.
-     * @param to The address of the recipient.
-     * @param value The amount of ether to send.
-     * @param data The data payload of the transaction.
-     * @param operation The operation type of the transaction.
-     */
-    function createExecution(
-        address safe,
-        address to,
-        uint256 value,
-        bytes calldata data,
-        uint8 operation
-    ) external;
-}
-
-/**
  * @title ChainlinkProcessor Contract
  * @notice This contract processes the messages received from Chainlink and forwards them for execution.
  * @dev This contract assumes integration with a Gnosis Safe-like system.
@@ -80,8 +59,7 @@ contract ChainlinkProcessor is CCIPReceiver {
 
     /// @notice Address of the ExecutionModule contract.
     address public executionModule;
-    address public chainlink;
-    uint48 public chainId;
+    uint64 public chainId;
 
     event MessageProcessed(Client.Any2EVMMessage message);
     event DataDecoded(address safe, address to, bytes data, uint256 value);
@@ -95,28 +73,27 @@ contract ChainlinkProcessor is CCIPReceiver {
      * @param _executionModule Address of the ExecutionModule
      * @param _chainlink Address of the Chainlink
      */
-    constructor(address _executionModule, address _chainlink, uint48 _chainId) CCIPReceiver(_chainlink) {
+    constructor(address _executionModule, address _chainlink, uint64 _chainId) CCIPReceiver(_chainlink) {
         executionModule = _executionModule;
-        chainlink = _chainlink;
         chainId = _chainId;
     }
 
     /**
      * @dev Event emitted when an approver is added.
      */
-    event ApproverAdded(uint48 indexed _chainId, address indexed safe, address indexed approver);
+    event ApproverAdded(uint64 indexed _chainId, address indexed safe, address indexed approver);
 
     /**
      * @dev Event emitted when an approver is removed.
      */
-    event ApproverRemoved(uint48 indexed _chainId, address indexed safe, address indexed approver);
+    event ApproverRemoved(uint64 indexed _chainId, address indexed safe, address indexed approver);
 
     /**
      * @notice Allows a contract to add an approver for a given chain ID
      * @param _chainId The ID of the chain
      * @param approver The address of the approver to add
      */
-    function addApprover(uint48 _chainId, address approver) external {
+    function addApprover(uint64 _chainId, address approver) external {
         approvers[_chainId][msg.sender][approver] = true;
         emit ApproverAdded(_chainId, msg.sender, approver);
     }
@@ -126,7 +103,7 @@ contract ChainlinkProcessor is CCIPReceiver {
      * @param _chainId The ID of the chain
      * @param approver The address of the approver to remove
      */
-    function removeApprover(uint48 _chainId, address approver) external {
+    function removeApprover(uint64 _chainId, address approver) external {
         approvers[_chainId][msg.sender][approver] = false;
         emit ApproverRemoved(_chainId, msg.sender, approver);
     }
@@ -153,6 +130,7 @@ contract ChainlinkProcessor is CCIPReceiver {
         emit MessageProcessed(message);
         emit DataDecoded(safe, to, data, value);
 
+        // CCIP sends address as a bytes
         address sender;
         bytes memory senderBytes = message.sender;
 
