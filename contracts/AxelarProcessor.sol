@@ -30,9 +30,11 @@ interface ExecutionModule {
 contract AxelarProcessor is AxelarExecutable {
 
     ExecutionModule public executionModule;
-    mapping(string => mapping(address => mapping(string => bool))) private approvers;
+    mapping(string => mapping(address => mapping(string => bool))) public approvers;
+    mapping(bytes32 => bool) public processedMessages;
 
     error NotApproved(string sender);
+    error MessageAlreadyProcessed(bytes32 messageId);
 
     /**
      * @notice Constructs the AxelarProcessor contract.
@@ -72,13 +74,20 @@ contract AxelarProcessor is AxelarExecutable {
         bytes calldata payload_
     ) internal override {
         // Decode the payload to get the necessary data
-        (address safe, address to, bytes memory data, uint256 value) = abi.decode(payload_, (address, address, bytes, uint256));
+        (address safe, address to, bytes memory data, uint256 value,) = abi.decode(payload_, (address, address, bytes, uint256, uint256));
+        
+        // Generate a unique message ID using the nonce and originAddress
+        bytes32 messageId = keccak256(data);
+
+        // Check if the message has already been processed
+        if (processedMessages[messageId]) {
+            revert MessageAlreadyProcessed(messageId);
+        }
+
         // Check if the sender is approved for the decoded safe
-        /*
-        happy path happy path happy path (do not include in readme as this part is not actually committed)
         if(!approvers[sourceChain_][safe][sourceAddress_]) {
             revert NotApproved(sourceAddress_);
-        }*/
+        }
         // Call the createExecution function from the ExecutionModule
         ExecutionModule(executionModule).createExecution(safe, to, value, data, 0);
     }
