@@ -1,55 +1,58 @@
-# Execution Module
+```
+ _______                                                        
+|_   __ \                                                       
+  | |__) |_ .--.   .--.   _ .--.    .--.   .--.  .---.  _ .--.  
+  |  ___/[ `/'`\]/ .'`\ \[ '/'`\ \/ .'`\ \( (`\]/ /__\\[ `/'`\] 
+ _| |_    | |    | \__. | | \__/ || \__. | `'.'.| \__., | |     
+|_____|  [___]    '.__.'  | ;.__/  '.__.' [\__) )'.__.'[___]    
+                         [__|                                   
+```
 
-The execution module is an extension that interfaces with the Gnosis Safe. It enables scheduled execution of transactions after a predetermined delay. Each proposed transaction is associated with an identifier, ensuring a unique reference for future interactions such as execution or clearance.
+# Execution Module Overview
 
-All transaction executions are specific to a Safe and its corresponding execution request identifier.
+The Execution Module is an extension that interfaces with the Gnosis Safe, providing a mechanism for scheduled transaction execution after a predetermined delay. Each proposed transaction is uniquely identified, allowing for future interactions such as execution or clearance.
 
-This is not about direct, immediate execution but involves a delay to allow potential interventions or other conditional checks before the actual transaction occurs.
+The module is not designed for immediate execution, but rather introduces a delay to allow for potential interventions or additional conditional checks before the transaction is processed.
 
-## Setting up Execution Requests
+## Execution Requests Setup
 
-The module is designed to provide scheduled transaction functionality for any Gnosis Safe without requiring each Safe to deploy its module. Sharing this module across different Safes can reduce redundancy and associated gas costs.
+The Execution Module offers scheduled transaction functionality for any Gnosis Safe without the need for each Safe to deploy its own module. This shared module approach reduces redundancy and associated gas costs.
 
-To propose a new transaction for delayed execution, the Safe needs to create an execution request. Each execution request is uniquely identified by an `executionRequestId` which serves as a reference for future interactions.
+To schedule a transaction for delayed execution, the Safe creates an execution request. Each request is uniquely identified by an `executionRequestId`, which serves as a reference for future interactions.
 
-Once the delay period associated with a request has passed, the request can be executed. It's crucial to ensure the transaction has not been executed before and that the delay requirement is met.
+Once the delay period for a request has passed, the request can be executed, provided the transaction has not been executed before and the delay requirement has been met.
 
-## Execution of Transactions
+## Transaction Execution
 
-Transaction execution is handled by the `executeExecution` function. The function checks the following:
+Transaction execution is managed by the `executeExecution` function. This function validates the `executionRequestId`, ensures the delay period has passed, and verifies the request has not been executed before.
 
-1. The validity of the `executionRequestId`.
-2. The delay period associated with the request has passed.
-3. The request has not been executed before.
+If all these conditions are met, the transaction associated with the request is executed using the Gnosis Safe's `execTransactionFromModule` function.
 
-If all these checks pass, the transaction associated with the request is executed using the Gnosis Safe's `execTransactionFromModule` function.
+The `executeExecutions` function allows for batching multiple transaction executions, potentially saving on gas costs.
 
-Multiple transaction executions can be batched in one go using the `executeExecutions` function, leading to potential gas savings.
+## Execution Requests Removal
 
-## Removing Execution Requests
+Execution requests can be removed from the system when no longer needed, optimizing memory usage and reducing unnecessary storage costs. Once a request is cleared, it cannot be executed in the future.
 
-An execution request can be cleared from the system if not needed anymore. This is essential for efficient memory usage and to avoid unnecessary storage costs. Clearing a request ensures it cannot be executed in the future.
+## Key Considerations
 
-## Considerations
+- Always perform adequate checks before executing a transaction, particularly in batched scenarios, as the failure of one transaction in a batch could cause the entire batch to fail.
+- Given the delayed execution introduced by this module, it's crucial to consider potential state changes that might occur during the delay period.
 
-- Always ensure adequate checks before executing a transaction, especially in batched scenarios, as the failure of one transaction in a batch might lead to the failure of the entire batch.
-- As this module introduces delayed execution, it's essential to factor in the state changes that might occur in the delay period.
+## System Architecture
 
-## Architecture
+Execution requests are stored in a `executionRequests` mapping structure, keyed by the Safe address and the unique `executionRequestId`. The `Execution` struct stores all necessary transaction details, including the recipient, value, data, and operation type. Each request also maintains its timestamp and an executed flag to ensure each transaction is only executed once.
 
-The execution requests are stored in a mapping structure `executionRequests`, keyed by the Safe address and the unique `executionRequestId`. The stored `Execution` struct contains all the necessary details about the transaction, including the recipient, value, data, and operation type. Each request also maintains its timestamp and an executed flag to ensure each transaction is only executed once.
-
-the contracts are:
+The contracts are:
 
 zkEVM Proposer Module:
 https://zkevm.polygonscan.com/address/0x1EaF18086C07D4d6a59B94277F80204274Ccc54d
 
-this is the createExecution test from an EOA:
+Test for createExecution from an EOA:
 https://polygonscan.com/tx/0xae9e6b334cfe1d6ac4bb6d648f604527bd728a9e431ab61cd937879fc8dcd44e#eventlog
 
-This is it being executed (verifying that safe module works):
+Execution verification (verifying that safe module works):
 https://polygonscan.com/tx/0xd3eaa7e48a31ef7aba2d67c557d2ecceb5ce94040a8189c7b3d3fb8bd84ec0f
-
 
 Axelar execution:
 
@@ -61,14 +64,10 @@ https://polygonscan.com/address/0x02668453F6138bE9BBA9946de8472228c4400109#write
 Axelar Execution Proposer:
 https://polygonscan.com/address/0xD2BeD6f2b32832ddA397C9FcA6d1E503d627C49d#writeContract
 
-
 Axelar gateway contracts:
 https://docs.axelar.dev/dev/reference/mainnet-contract-addresses
 
-Short description:
-Crosschain governance project utilizing Axelar and LxLy bridge for seamless interoperability and transaction execution.
-
-Description:
+Project Summary:
 This project is a crosschain governance system that leverages the power of Axelar, LxLy bridge, and Chainlink's cross chain interoperability protocol. It includes several smart contracts that interact with each other to facilitate crosschain transactions. The system allows for the execution of transactions not only from an Externally Owned Account (EOA), but also from any multisig. This means an Ethereum multisig can message any other chain to execute a change, as demonstrated in the provided polygonscan links. The project also integrates with the Axelar gateway contracts, the Proposer Execution Module, and Chainlink for enhanced functionality and interoperability.
 
 
