@@ -70,9 +70,41 @@ contract ProposerExecutionModule {
     // Emitted when an execution request is cleared.
     event ExecutionCleared(address indexed safe, bytes32 indexed executionRequestId);
 
+    // Error to show when the caller is not a proposer
+    error CallerIsNotAProposer();
+
+    // Error to show when the target address is invalid
+    error InvalidTargetAddress();
+
+    // Error to show when the execution request already exists
+    error ExecutionRequestAlreadyExists();
+
+    // Error to show when the execution request is not found
+    error ExecutionRequestNotFound();
+
+    // Error to show when the delay period has not passed for the request
+    error DelayPeriodNotPassedForRequest();
+
+    // Error to show when the execution request has already been executed
+    error ExecutionRequestAlreadyExecuted();
+
+    // Error to show when the transaction could not be executed
+    error CouldNotExecuteTransaction();
+
+    // Error to show when the proposer is still allowlisted
+    error ProposerStillAllowlisted();
+
+    // Error to show when the delay is too long
+    error DelayTooLong();
+
+    // Error to show when the proposer has already been added
+    error ProposerAlreadyAdded();
+
     // Modifier to check if the caller is a allowlisted proposer.
     modifier onlyValidProposer(address safe) {
-        require(safeSettings[safe].proposerWhitelist[msg.sender], "Caller is not a proposer");
+        if (!safeSettings[safe].proposerWhitelist[msg.sender]) {
+            revert CallerIsNotAProposer();
+        }
         _;
     }
 
@@ -91,14 +123,18 @@ contract ProposerExecutionModule {
         bytes calldata data,
         Enum.Operation operation
     ) external onlyValidProposer(safe) {
-        require(to != address(0), "Invalid target address");
+        if (to == address(0)) {
+            revert InvalidTargetAddress();
+        }
 
         // Create a unique identifier for the proposed transaction.
         // Adding a nonce to the executionRequestId to ensure uniqueness for repeated transactions.
         // Nonce is a global variable that is incremented for each safe to ensure uniqueness.
         uint256 nonce = safeNonce[safe]++;
         bytes32 executionRequestId = keccak256(abi.encodePacked(safe, to, value, data, operation, nonce));
-        require(executionRequests[safe][executionRequestId].timestamp == 0, "Execution request already exists");
+        if (executionRequests[safe][executionRequestId].timestamp != 0) {
+            revert ExecutionRequestAlreadyExists();
+        }
 
         // Create the proposed transaction and store it.
         executionRequests[safe][executionRequestId] = Execution({
@@ -124,25 +160,30 @@ contract ProposerExecutionModule {
         Execution storage request = executionRequests[safe][executionRequestId];
 
         // Check that the request exists.
-        require(request.timestamp > 0, "Execution request not found");
+        if (request.timestamp == 0) {
+            revert ExecutionRequestNotFound();
+        }
         // Check if the delay for this transaction has passed or if the transaction should bypass the delay.
-        require((block.timestamp >= request.timestamp + delay) || fast, "Delay period not passed for request");
+        if (block.timestamp < request.timestamp + delay && !fast) {
+            revert DelayPeriodNotPassedForRequest();
+        }
         // Check that the request has not been executed.
-        require(request.executed == 0, "Execution request already executed");
+        if (request.executed != 0) {
+            revert ExecutionRequestAlreadyExecuted();
+        }
 
         // Mark the transaction as executed.
         request.executed = 1;
 
         // Execute the transaction using Gnosis Safe's execTransactionFromModule function.
-        require(
-            IGnosisSafe(safe).execTransactionFromModule(
+        if (!IGnosisSafe(safe).execTransactionFromModule(
                 request.to, 
                 request.value, 
                 request.data, 
                 request.operation
-            ), 
-            "Could not execute transaction"
-        );
+            )) {
+            revert CouldNotExecuteTransaction();
+        }
 
         // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
         for (uint256 i = 0; i < safeSettings[safe].executions.length; i++) {
@@ -176,14 +217,20 @@ contract ProposerExecutionModule {
             Execution storage request = executionRequests[safe][executionRequestIds[i]];
 
             // Check that the request exists.
-            require(request.timestamp > 0, "Execution request not found");
+            if (request.timestamp == 0) {
+                revert ExecutionRequestNotFound();
+            }
             // Check that the request has not been executed.
-            require(request.executed==0, "Execution request already executed");
+            if (request.executed != 0) {
+                revert ExecutionRequestAlreadyExecuted();
+            }
             // Check if the proposer is no longer allowlisted.
-            require(!safeSettings[safe].proposerWhitelist[msg.sender], "Proposer still allowlisted");
+            if (safeSettings[safe].proposerWhitelist[msg.sender]) {
+                revert ProposerStillAllowlisted();
+            }
 
             // Clear the execution request.
-            executionRequests[safe][executionRequestIds[i]].executed=2;
+            executionRequests[safe][executionRequestIds[i]].executed = 2;
 
             // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
             for (uint256 j = 0; j < safeSettings[safe].executions.length; j++) {
@@ -201,7 +248,9 @@ contract ProposerExecutionModule {
     /// @notice Allows the manager (Safe Multisig) to change the delay period.
     /// @param _delay The new delay in seconds.
     function changeDelay(uint256 _delay) external {
-        require(_delay <= maxDelay, "Delay too long");
+        if (_delay > maxDelay) {
+            revert DelayTooLong();
+        }
         safeSettings[msg.sender].delay = _delay;
         emit DelayChanged(msg.sender,_delay);
     }
@@ -209,7 +258,9 @@ contract ProposerExecutionModule {
     /// @notice Allows the manager (Safe Multisig) to add a proposer to the whitelist.
     /// @param proposer The address of the proposer to add.
     function addProposer(address proposer) external {
-        require(!safeSettings[msg.sender].proposerWhitelist[proposer], "Proposer already added");
+        if (safeSettings[msg.sender].proposerWhitelist[proposer]) {
+            revert ProposerAlreadyAdded();
+        }
         safeSettings[msg.sender].proposerWhitelist[proposer] = true;
         safeSettings[msg.sender].proposers.push(proposer);
         emit ProposerAdded(msg.sender, proposer);
