@@ -36,6 +36,9 @@ contract AxelarProcessor is AxelarExecutable {
     error NotApproved(string sender);
     error MessageAlreadyProcessed(bytes32 messageId);
 
+    event ApproverAdded(string chainId, address indexed sender, string approver);
+    event ApproverRemoved(string chainId, address indexed sender, string approver);
+
     /**
      * @notice Constructs the AxelarProcessor contract.
      * @param gateway_ The address of the AxelarGateway contract.
@@ -51,6 +54,7 @@ contract AxelarProcessor is AxelarExecutable {
      */
     function addApprover(string memory chainId, string memory approver) external {
         approvers[chainId][msg.sender][approver] = true;
+        emit ApproverAdded(chainId, msg.sender, approver);
     }
 
     /**
@@ -60,6 +64,7 @@ contract AxelarProcessor is AxelarExecutable {
      */
     function removeApprover(string memory chainId, string memory approver) external {
         approvers[chainId][msg.sender][approver] = false;
+        emit ApproverRemoved(chainId, msg.sender, approver);
     }
 
     /**
