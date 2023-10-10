@@ -66,6 +66,8 @@ contract ChainlinkProcessor is CCIPReceiver {
 
     /// @notice Mapping to track the approved senders on different chains
     mapping(uint256 => mapping(address => mapping(address => bool))) private approvers;
+    mapping(uint256 => mapping(address => address[])) private approversArray;
+    mapping(address => uint64[]) private usedChainIds;
     mapping(bytes32 => bool) public processedMessages;
     
     /**
@@ -95,6 +97,10 @@ contract ChainlinkProcessor is CCIPReceiver {
      */
     function addApprover(uint64 _chainId, address approver) external {
         approvers[_chainId][msg.sender][approver] = true;
+        approversArray[_chainId][msg.sender].push(approver);
+        if (!isChainIdUsed(msg.sender, _chainId)) {
+            usedChainIds[msg.sender].push(_chainId);
+        }
         emit ApproverAdded(_chainId, msg.sender, approver);
     }
 
@@ -105,7 +111,47 @@ contract ChainlinkProcessor is CCIPReceiver {
      */
     function removeApprover(uint64 _chainId, address approver) external {
         approvers[_chainId][msg.sender][approver] = false;
+        for (uint256 i = 0; i < approversArray[_chainId][msg.sender].length; i++) {
+            if (approversArray[_chainId][msg.sender][i] == approver) {
+                approversArray[_chainId][msg.sender][i] = approversArray[_chainId][msg.sender][approversArray[_chainId][msg.sender].length - 1];
+                approversArray[_chainId][msg.sender].pop();
+                break;
+            }
+        }
         emit ApproverRemoved(_chainId, msg.sender, approver);
+    }
+
+    /**
+     * @notice Returns the array of approvers for a given chain ID
+     * @param _chainId The ID of the chain
+     * @return The array of approvers
+     */
+    function getApprovers(uint64 _chainId, address safe) external view returns (address[] memory) {
+        return approversArray[_chainId][safe];
+    }
+
+    /**
+     * @notice Returns the array of all used chain IDs for a given Safe
+     * @param safe The address of the Safe
+     * @return The array of chain IDs
+     */
+    function getChainIds(address safe) external view returns (uint64[] memory) {
+        return usedChainIds[safe];
+    }
+
+    /**
+     * @notice Checks if a chain ID has been used for a given Safe
+     * @param safe The address of the Safe
+     * @param _chainId The ID of the chain
+     * @return True if the chain ID has been used, false otherwise
+     */
+    function isChainIdUsed(address safe, uint64 _chainId) internal view returns (bool) {
+        for (uint256 i = 0; i < usedChainIds[safe].length; i++) {
+            if (usedChainIds[safe][i] == _chainId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
