@@ -44,6 +44,8 @@ contract ProposerExecutionModule {
     // SafeSettings struct to keep track of proposers and delay for each Safe 
     struct SafeSettings {
         mapping(address => bool) proposerWhitelist;  // A mapping of allowlisted proposers.
+        address[] proposers;                         // An array of allowlisted proposers.
+        bytes32[] executions;                         // An array of proposed executions
         uint256 delay;                               // Delay specific to this Safe.
     }
 
@@ -108,6 +110,9 @@ contract ProposerExecutionModule {
             executed: 0
         });
 
+        // Add the executionRequestId to the executions array in the SafeSettings for the safe.
+        safeSettings[safe].executions.push(executionRequestId);
+
         emit ExecutionCreated(safe, executionRequestId);
     }
 
@@ -138,6 +143,15 @@ contract ProposerExecutionModule {
             ), 
             "Could not execute transaction"
         );
+
+        // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
+        for (uint256 i = 0; i < safeSettings[safe].executions.length; i++) {
+            if (safeSettings[safe].executions[i] == executionRequestId) {
+                safeSettings[safe].executions[i] = safeSettings[safe].executions[safeSettings[safe].executions.length - 1];
+                safeSettings[safe].executions.pop();
+                break;
+            }
+        }
     }
 
     /// @notice Allows anyone to execute a transaction after its delay.
@@ -171,6 +185,15 @@ contract ProposerExecutionModule {
             // Clear the execution request.
             executionRequests[safe][executionRequestIds[i]].executed=2;
 
+            // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
+            for (uint256 j = 0; j < safeSettings[safe].executions.length; j++) {
+                if (safeSettings[safe].executions[j] == executionRequestIds[i]) {
+                    safeSettings[safe].executions[j] = safeSettings[safe].executions[safeSettings[safe].executions.length - 1];
+                    safeSettings[safe].executions.pop();
+                    break;
+                }
+            }
+
             emit ExecutionCleared(safe, executionRequestIds[i]);
         }
     }
@@ -186,7 +209,9 @@ contract ProposerExecutionModule {
     /// @notice Allows the manager (Safe Multisig) to add a proposer to the whitelist.
     /// @param proposer The address of the proposer to add.
     function addProposer(address proposer) external {
+        require(!safeSettings[msg.sender].proposerWhitelist[proposer], "Proposer already added");
         safeSettings[msg.sender].proposerWhitelist[proposer] = true;
+        safeSettings[msg.sender].proposers.push(proposer);
         emit ProposerAdded(msg.sender, proposer);
     }
 
@@ -194,6 +219,25 @@ contract ProposerExecutionModule {
     /// @param proposer The address of the proposer to remove.
     function removeProposer(address proposer) external {
         safeSettings[msg.sender].proposerWhitelist[proposer] = false;
+        for (uint256 i = 0; i < safeSettings[msg.sender].proposers.length; i++) {
+            if (safeSettings[msg.sender].proposers[i] == proposer) {
+                safeSettings[msg.sender].proposers[i] = safeSettings[msg.sender].proposers[safeSettings[msg.sender].proposers.length - 1];
+                safeSettings[msg.sender].proposers.pop();
+                break;
+            }
+        }
         emit ProposerRemoved(msg.sender, proposer);
+    }
+
+    /// @notice Returns the array of approvers for a given Safe.
+    /// @param safe The address of the Gnosis Safe.
+    function getProposers(address safe) external view returns (address[] memory) {
+        return safeSettings[safe].proposers;
+    }
+
+    /// @notice Returns the array of execution request ids for a given Safe.
+    /// @param safe The address of the Gnosis Safe.
+    function getExecutionIds(address safe) external view returns (bytes32[] memory) {
+        return safeSettings[safe].executions;
     }
 }
