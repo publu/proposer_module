@@ -3,13 +3,12 @@ pragma solidity >=0.8.0;
 
 import "./interfaces/IBridgeMessageReceiver.sol";
 import "./interfaces/IPolygonZkEVMBridge.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/IExecutionModule.sol";
 
 /**
  * LxLyProposer is a contract that uses the message layer of the PolygonZkEVMBridge to propose transactions
  */
-contract LxLyProposer is IBridgeMessageReceiver, Ownable {
+contract LxLyProposer is IBridgeMessageReceiver {
     // Global Exit Root address
     IPolygonZkEVMBridge public immutable polygonZkEVMBridge;
     ExecutionModule public immutable executionModule;
@@ -25,6 +24,9 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
      */
     mapping(bytes32 => bool) private processedMessages;
 
+    // Owner of the contract
+    address private owner;
+
     /**
      * @param _polygonZkEVMBridge Polygon zkevm bridge address
      */
@@ -32,6 +34,7 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
         polygonZkEVMBridge = _polygonZkEVMBridge;
         networkID = polygonZkEVMBridge.networkID();
         executionModule = _executionModule;
+        owner = msg.sender;
     }
 
     /**
@@ -42,6 +45,7 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
     error NotPolygonZkEVMBridge(address sender);
     error NotApproved(address sender, uint32 networkId);
     error MessageAlreadyProcessed(bytes32 messageId);
+    error NotOwner(address sender);
 
     /**
      * @notice Verify merkle proof and withdraw tokens/ether
@@ -81,5 +85,23 @@ contract LxLyProposer is IBridgeMessageReceiver, Ownable {
         executionModule.createExecution(safe, to, value, data, 0);
 
         emit TransactionReceived(originAddress, originNetwork, data);
+    }
+
+    /**
+     * @notice Changes the owner of the contract
+     * @param newOwner The address of the new owner
+     */
+    function changeOwner(address newOwner) external {
+        if(msg.sender != owner) 
+            revert NotOwner(msg.sender);
+
+        owner = newOwner;
+    }
+
+    /**
+     * @notice Returns the current owner of the contract
+     */
+    function getOwner() external view returns (address) {
+        return owner;
     }
 }
