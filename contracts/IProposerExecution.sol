@@ -12,8 +12,8 @@ interface IProposerExecutionModule {
         Enum.Operation operation
     ) external;
     function executeExecutions(address safe, bytes32[] calldata executionRequestIds) external;
-    /*function clearExecutions(address safe, bytes32[] calldata executionRequestIds) external;
+    function clearExecutions(address safe, bytes32[] calldata executionRequestIds) external;
     function changeDelay(uint256 _delay) external;
     function addProposer(address proposer) external;
-    function removeProposer(address proposer) external;*/
+    function removeProposer(address proposer) external;
 }

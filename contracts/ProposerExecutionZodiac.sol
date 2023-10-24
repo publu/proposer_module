@@ -17,11 +17,14 @@ interface IGnosisSafe {
         returns (bool success);
 }
 
-/// @title ProposerExecutionModuleV2
+/// @title ProposerExecutionModuleZodiac
 /// @notice A module for the Gnosis Safe Multisig wallet which allows allowlisted addresses 
 /// to propose transactions with a delay before execution. Only the multisig can add or remove
-/// addresses from the whitelist.
-contract ProposerExecutionModuleV2 is Module, IProposerExectution {
+/// addresses from the whitelist. This module is part of Zodiac, an expansion pack for DAOs.
+/// Zodiac is a collection of tools built according to an open standard. The Zodiac open standard
+/// enables DAOs to act more like constellations, connecting protocols, platforms, and chains,
+/// no longer confined to monolithic designs.
+contract ProposerExecutionModuleZodiac is Module, IProposerExectution {
     
     // The delay before a proposed transaction can be executed, default to no delay
     uint256 public delay = 0;
@@ -30,7 +33,7 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
     uint256 public constant maxDelay = 4 weeks;
 
     // Mapping to store the nonce for each Safe address
-    mapping(address => uint256) public safeNonce;
+    uint256 public safeNonce;
 
     // Execution struct represents a proposed transaction.
     struct Execution {
@@ -51,10 +54,10 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
     }
 
     // A mapping to store Safe settings for each Safe address.
-    mapping(address => SafeSettings) public safeSettings;
+    SafeSettings public safeSettings;
 
     // A mapping to store all the proposed transactions.
-    mapping(address => mapping(bytes32 => Execution)) public executionRequests;
+    mapping(bytes32 => Execution) public executionRequests;
 
     // Emitted when a new proposed transaction is created.
     event ExecutionCreated(address indexed safe, bytes32 indexed executionRequestId);
@@ -102,28 +105,60 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
     error ProposerAlreadyAdded();
 
     // Modifier to check if the caller is a allowlisted proposer.
-    modifier onlyValidProposer(address safe) {
-        if (!safeSettings[safe].proposerWhitelist[msg.sender]) {
+    modifier onlyValidProposer() {
+        if (!proposerWhitelist[msg.sender]) {
             revert CallerIsNotAProposer();
         }
         _;
     }
 
-    constructor() {}
+    /**
+     * @dev Contract constructor.
+     * @param _owner The address of the owner.
+     * @param _avatar The address of the avatar.
+     * @param _target The address of the target.
+     */
+    constructor(
+        address _owner,
+        address _avatar,
+        address _target
+    ) {
+        bytes memory initParams = abi.encode(
+            _owner,
+            _avatar,
+            _target
+        );
+        setUp(initParams);
+    }
 
+    /// @dev Initialize function, will be triggered when a new proxy is deployed
+    /// @param initializeParams ABI encoded initialization params, in the same order as the parameters for this contract's constructor.
+    /// @notice Only callable once.
+    function setUp(bytes memory initializeParams) public override initializer {
+        __Ownable_init();
+        (
+            address _owner,
+            address _avatar,
+            address _target
+        ) = abi.decode(initializeParams, (address, address, address));
+
+        setAvatar(_avatar);
+        setTarget(_target);
+        transferOwnership(_owner);
+
+        emit ModuleSetUp(owner(), avatar, target);
+    }
     /// @notice Allows a allowlisted proposer to propose a transaction.
-    /// @param safe The address of the Gnosis Safe.
     /// @param to The address of the recipient.
     /// @param value The amount of ether to send.
     /// @param data The data payload of the transaction.
     /// @param operation The operation type of the transaction.
     function createExecution(
-        address safe,
         address to,
         uint256 value,
         bytes calldata data,
         Enum.Operation operation
-    ) external onlyValidProposer(safe) {
+    ) external onlyValidProposer() {
         if (to == address(0)) {
             revert InvalidTargetAddress();
         }
@@ -131,14 +166,14 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
         // Create a unique identifier for the proposed transaction.
         // Adding a nonce to the executionRequestId to ensure uniqueness for repeated transactions.
         // Nonce is a global variable that is incremented for each safe to ensure uniqueness.
-        uint256 nonce = safeNonce[safe]++;
-        bytes32 executionRequestId = keccak256(abi.encodePacked(safe, to, value, data, operation, nonce));
-        if (executionRequests[safe][executionRequestId].timestamp != 0) {
+        uint256 nonce = safeNonce++;
+        bytes32 executionRequestId = keccak256(abi.encodePacked(to, value, data, operation, nonce));
+        if (executionRequests[executionRequestId].timestamp != 0) {
             revert ExecutionRequestAlreadyExists();
         }
 
         // Create the proposed transaction and store it.
-        executionRequests[safe][executionRequestId] = Execution({
+        executionRequests[executionRequestId] = Execution({
             timestamp: block.timestamp,
             to: to,
             value: value,
@@ -148,7 +183,7 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
         });
 
         // Add the executionRequestId to the executions array in the SafeSettings for the safe.
-        safeSettings[safe].executions.push(executionRequestId);
+        safeSettings.executions.push(executionRequestId);
 
         emit ExecutionCreated(safe, executionRequestId);
     }
@@ -158,7 +193,7 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
     /// @param executionRequestId The unique identifier of the proposed transaction.
     /// @param fast A boolean indicating if the transaction should bypass the delay.
     function _executeFromModule(address safe, bytes32 executionRequestId, bool fast) internal {
-        Execution storage request = executionRequests[safe][executionRequestId];
+        Execution storage request = executionRequests[executionRequestId];
 
         // Check that the request exists.
         if (request.timestamp == 0) {
@@ -177,7 +212,7 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
         request.executed = 1;
 
         // Execute the transaction using Gnosis Safe's execTransactionFromModule function.
-        if (!IGnosisSafe(safe).execTransactionFromModule(
+        if (!exec(
                 request.to, 
                 request.value, 
                 request.data, 
@@ -187,35 +222,33 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
         }
 
         // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
-        for (uint256 i = 0; i < safeSettings[safe].executions.length; i++) {
-            if (safeSettings[safe].executions[i] == executionRequestId) {
-                safeSettings[safe].executions[i] = safeSettings[safe].executions[safeSettings[safe].executions.length - 1];
-                safeSettings[safe].executions.pop();
+        for (uint256 i = 0; i < safeSettings.executions.length; i++) {
+            if (safeSettings.executions[i] == executionRequestId) {
+                safeSettings.executions[i] = safeSettings.executions[safeSettings.executions.length - 1];
+                safeSettings.executions.pop();
                 break;
             }
         }
     }
 
     /// @notice Allows anyone to execute a transaction after its delay.
-    /// @param safe The address of the Gnosis Safe.
     /// @param executionRequestId The unique identifier of the proposed transaction.
-    function executeExecution(address safe, bytes32 executionRequestId) external {
-        _executeFromModule(safe, executionRequestId, false);
+    function executeExecution(bytes32 executionRequestId) external {
+        _executeFromModule(executionRequestId, false);
     }
 
     /// @notice Allows an approved proposer to execute a transaction immediately, bypassing the delay.
-    /// @param safe The address of the Gnosis Safe.
     /// @param executionRequestId The unique identifier of the proposed transaction.
-    function executeExecutionFast(address safe, bytes32 executionRequestId) external onlyValidProposer(safe) {
-        _executeFromModule(safe, executionRequestId, true);
+    function executeExecutionFast(bytes32 executionRequestId) external onlyOwner() {
+        _executeFromModule(executionRequestId, true);
     }
 
     /// @notice Allows anyone to clear multiple executions if their proposers were removed from the whitelist.
     /// @param safe The address of the Gnosis Safe.
     /// @param executionRequestIds An array of unique identifiers of the proposed transactions.
-    function clearExecutions(address safe, bytes32[] calldata executionRequestIds) external {
+    function clearExecutions(bytes32[] calldata executionRequestIds) external {
         for (uint256 i = 0; i < executionRequestIds.length; i++) {
-            Execution storage request = executionRequests[safe][executionRequestIds[i]];
+            Execution storage request = executionRequests[executionRequestIds[i]];
 
             // Check that the request exists.
             if (request.timestamp == 0) {
@@ -226,55 +259,55 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
                 revert ExecutionRequestAlreadyExecuted();
             }
             // Check if the proposer is no longer allowlisted.
-            if (safeSettings[safe].proposerWhitelist[msg.sender]) {
+            if (safeSettings.proposerWhitelist[msg.sender]) {
                 revert ProposerStillAllowlisted();
             }
 
             // Clear the execution request.
-            executionRequests[safe][executionRequestIds[i]].executed = 2;
+            executionRequests[executionRequestIds[i]].executed = 2;
 
             // Remove the executionRequestId from the executions array in the SafeSettings for the safe.
-            for (uint256 j = 0; j < safeSettings[safe].executions.length; j++) {
-                if (safeSettings[safe].executions[j] == executionRequestIds[i]) {
-                    safeSettings[safe].executions[j] = safeSettings[safe].executions[safeSettings[safe].executions.length - 1];
-                    safeSettings[safe].executions.pop();
+            for (uint256 j = 0; j < safeSettings.executions.length; j++) {
+                if (safeSettings.executions[j] == executionRequestIds[i]) {
+                    safeSettings.executions[j] = safeSettings.executions[safeSettings.executions.length - 1];
+                    safeSettings.executions.pop();
                     break;
                 }
             }
 
-            emit ExecutionCleared(safe, executionRequestIds[i]);
+            emit ExecutionCleared(executionRequestIds[i]);
         }
     }
 
-    /// @notice Allows the manager (Safe Multisig) to change the delay period.
+    /// @notice Allows the owner (Safe Multisig) to change the delay period.
     /// @param _delay The new delay in seconds.
-    function changeDelay(uint256 _delay) external {
+    function changeDelay(uint256 _delay) external onlyOwner {
         if (_delay > maxDelay) {
             revert DelayTooLong();
         }
-        safeSettings[msg.sender].delay = _delay;
+        safeSettings.delay = _delay;
         emit DelayChanged(msg.sender,_delay);
     }
 
-    /// @notice Allows the manager (Safe Multisig) to add a proposer to the whitelist.
+    /// @notice Allows the owner (Safe Multisig) to add a proposer to the whitelist.
     /// @param proposer The address of the proposer to add.
-    function addProposer(address proposer) external {
-        if (safeSettings[msg.sender].proposerWhitelist[proposer]) {
+    function addProposer(address proposer) external onlyOwner {
+        if (safeSettings.proposerWhitelist[proposer]) {
             revert ProposerAlreadyAdded();
         }
-        safeSettings[msg.sender].proposerWhitelist[proposer] = true;
-        safeSettings[msg.sender].proposers.push(proposer);
+        safeSettings.proposerWhitelist[proposer] = true;
+        safeSettings.proposers.push(proposer);
         emit ProposerAdded(msg.sender, proposer);
     }
 
-    /// @notice Allows the manager (Safe Multisig) to remove a proposer from the whitelist.
+    /// @notice Allows the owner (Safe Multisig) to remove a proposer from the whitelist.
     /// @param proposer The address of the proposer to remove.
-    function removeProposer(address proposer) external {
-        safeSettings[msg.sender].proposerWhitelist[proposer] = false;
-        for (uint256 i = 0; i < safeSettings[msg.sender].proposers.length; i++) {
-            if (safeSettings[msg.sender].proposers[i] == proposer) {
-                safeSettings[msg.sender].proposers[i] = safeSettings[msg.sender].proposers[safeSettings[msg.sender].proposers.length - 1];
-                safeSettings[msg.sender].proposers.pop();
+    function removeProposer(address proposer) external onlyOwner {
+        safeSettings.proposerWhitelist[proposer] = false;
+        for (uint256 i = 0; i < safeSettings.proposers.length; i++) {
+            if (safeSettings.proposers[i] == proposer) {
+                safeSettings.proposers[i] = safeSettings.proposers[safeSettings.proposers.length - 1];
+                safeSettings.proposers.pop();
                 break;
             }
         }
@@ -284,12 +317,12 @@ contract ProposerExecutionModuleV2 is Module, IProposerExectution {
     /// @notice Returns the array of approvers for a given Safe.
     /// @param safe The address of the Gnosis Safe.
     function getProposers(address safe) external view returns (address[] memory) {
-        return safeSettings[safe].proposers;
+        return safeSettings.proposers;
     }
 
     /// @notice Returns the array of execution request ids for a given Safe.
     /// @param safe The address of the Gnosis Safe.
     function getExecutionIds(address safe) external view returns (bytes32[] memory) {
-        return safeSettings[safe].executions;
+        return safeSettings.executions;
     }
 }
